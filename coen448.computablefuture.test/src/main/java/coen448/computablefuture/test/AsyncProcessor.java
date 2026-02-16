@@ -2,34 +2,46 @@ package coen448.computablefuture.test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 public class AsyncProcessor {
 
-    // Task A implementation [cite: 39]
+    /**
+     * Task A: Fail-Fast (Atomic Policy)
+     * If one service fails, the entire operation fails.
+     */
     public CompletableFuture<String> processAsyncFailFast(List<MicroService> services, List<String> messages) {
-        // Start all service calls concurrently [cite: 25]
         List<CompletableFuture<String>> futures = new ArrayList<>();
         for (int i = 0; i < services.size(); i++) {
             futures.add(services.get(i).retrieveAsync(messages.get(i)));
         }
 
-        // CompletableFuture.allOf handles the "Atomic" requirement: 
-        // if one fails, the aggregate future fails [cite: 24, 44]
         return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-            .thenApply(v -> {
-                // Returns combined results only if all succeed [cite: 46]
-                return futures.stream()
-                    .map(CompletableFuture::join)
-                    .collect(Collectors.joining(" "));
-            });
-            // Exceptions are not caught, so they propagate to the caller [cite: 45]
+            .thenApply(v -> futures.stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.joining(" ")));
     }
 
-    // Keep the processAsyncCompletionOrder method you were provided here
-    public CompletableFuture<List<String>> processAsyncCompletionOrder(List<MicroService> microservices, String message) {
-        // ... (use the code you provided in your prompt)
-        return null; // Ensure you keep your original implementation here
+    /**
+     * Task B: Fail-Partial (Best-Effort Policy)
+     * Returns results from successful services; ignores failed ones.
+     */
+    public CompletableFuture<List<String>> processAsyncFailPartial(List<MicroService> services, List<String> messages) {
+        List<CompletableFuture<String>> futures = new ArrayList<>();
+
+        for (int i = 0; i < services.size(); i++) {
+            // .handle() catches exceptions per-service so the whole stream doesn't crash
+            CompletableFuture<String> call = services.get(i).retrieveAsync(messages.get(i))
+                .handle((result, ex) -> (ex != null) ? null : result);
+            futures.add(call);
+        }
+
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+            .thenApply(v -> futures.stream()
+                .map(CompletableFuture::join)
+                .filter(Objects::nonNull) // Remove the nulls (failed calls)
+                .collect(Collectors.toList()));
     }
 }
