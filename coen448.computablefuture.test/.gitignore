@@ -1,0 +1,7 @@
+target/
+.settings/
+.classpath
+.project
+.clover/
+bin/
+*.class
