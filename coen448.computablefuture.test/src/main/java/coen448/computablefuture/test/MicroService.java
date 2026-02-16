@@ -1,25 +1,30 @@
 package coen448.computablefuture.test;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
-import java.util.List;
-import java.util.concurrent.*;
-import java.util.stream.Collectors;
-
-class Microservice {
-	
+public class MicroService {
+    
     private final String serviceId;
+    private boolean shouldFail = false; 
 
-    public Microservice(String serviceId) {
+    public MicroService(String serviceId) {
         this.serviceId = serviceId;
     }
 
-//    public CompletableFuture<String> retrieveAsync(String input) {
-//        // include input in the output so tests can verify the passed message
-//        return CompletableFuture.supplyAsync(() -> serviceId + ":" + input.toUpperCase());
-//    }
-    public CompletableFuture<String> retrieveAsync(String input) {
+    public void setShouldFail(boolean shouldFail) {
+        this.shouldFail = shouldFail;
+    }
+
+    public CompletableFuture<String> retrieveAsync(String message) {
+        if (shouldFail) {
+            // Task A Requirement: Propagate exceptions [cite: 45]
+            return CompletableFuture.failedFuture(new RuntimeException("Failure at " + serviceId));
+        }
+
         return CompletableFuture.supplyAsync(() -> {
-            // jitter: 0..30ms to perturb scheduling
+            // Jitter: 0..30ms ensures nondeterministic completion order [cite: 16, 75]
             int delayMs = ThreadLocalRandom.current().nextInt(0, 31);
             try {
                 TimeUnit.MILLISECONDS.sleep(delayMs);
@@ -27,9 +32,7 @@ class Microservice {
                 Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
             }
-            return serviceId + ":" + input.toUpperCase();
-            //return serviceId + ":" + input.toUpperCase() + "(" + delayMs + "ms)";
+            return serviceId + ":" + message.toUpperCase();
         });
     }
-    
 }
