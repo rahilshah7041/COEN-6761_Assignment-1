@@ -10,7 +10,6 @@ public class AsyncProcessor {
 
     /**
      * Task A: Fail-Fast (Atomic Policy)
-     * If one service fails, the entire operation fails.
      */
     public CompletableFuture<String> processAsyncFailFast(List<MicroService> services, List<String> messages) {
         List<CompletableFuture<String>> futures = new ArrayList<>();
@@ -26,13 +25,10 @@ public class AsyncProcessor {
 
     /**
      * Task B: Fail-Partial (Best-Effort Policy)
-     * Returns results from successful services; ignores failed ones.
      */
     public CompletableFuture<List<String>> processAsyncFailPartial(List<MicroService> services, List<String> messages) {
         List<CompletableFuture<String>> futures = new ArrayList<>();
-
         for (int i = 0; i < services.size(); i++) {
-            // .handle() catches exceptions per-service so the whole stream doesn't crash
             CompletableFuture<String> call = services.get(i).retrieveAsync(messages.get(i))
                 .handle((result, ex) -> (ex != null) ? null : result);
             futures.add(call);
@@ -41,7 +37,26 @@ public class AsyncProcessor {
         return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
             .thenApply(v -> futures.stream()
                 .map(CompletableFuture::join)
-                .filter(Objects::nonNull) // Remove the nulls (failed calls)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList()));
+    }
+
+    /**
+     * Task C: Fail-Soft (Fallback Policy)
+     * Replaces any failure with the provided fallbackValue.
+     */
+    public CompletableFuture<List<String>> processAsyncFailSoft(List<MicroService> services, List<String> messages, String fallbackValue) {
+        List<CompletableFuture<String>> futures = new ArrayList<>();
+        for (int i = 0; i < services.size(); i++) {
+            // .exceptionally handles the error by returning the fallback string
+            CompletableFuture<String> call = services.get(i).retrieveAsync(messages.get(i))
+                .exceptionally(ex -> fallbackValue);
+            futures.add(call);
+        }
+
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+            .thenApply(v -> futures.stream()
+                .map(CompletableFuture::join)
                 .collect(Collectors.toList()));
     }
 }

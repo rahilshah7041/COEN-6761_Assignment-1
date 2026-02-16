@@ -1,8 +1,6 @@
 package coen448.computablefuture.test;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 public class MicroService {
     private final String serviceId;
@@ -12,16 +10,21 @@ public class MicroService {
         this.serviceId = serviceId;
     }
 
+    /**
+     * Allows the test to manually trigger a failure without using Mockito.
+     */
     public void setShouldFail(boolean shouldFail) {
         this.shouldFail = shouldFail;
     }
 
     public CompletableFuture<String> retrieveAsync(String message) {
+        // If the flag is set, return a failed future immediately
         if (shouldFail) {
             return CompletableFuture.failedFuture(new RuntimeException("Failure at " + serviceId));
         }
 
         return CompletableFuture.supplyAsync(() -> {
+            // Adds jitter to ensure nondeterministic execution order
             int delayMs = ThreadLocalRandom.current().nextInt(0, 31);
             try {
                 TimeUnit.MILLISECONDS.sleep(delayMs);
