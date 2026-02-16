@@ -1,91 +1,64 @@
 package coen448.computablefuture.test;
 
-
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 import java.util.List;
-import java.util.concurrent.*;
-import org.junit.jupiter.api.RepeatedTest;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
 
 public class AsyncProcessorTest {
-	@RepeatedTest(5)
-    public void testProcessAsyncSuccess() throws ExecutionException, InterruptedException {
-        
-		Microservice mockService1 = mock(Microservice.class);
-        Microservice mockService2 = mock(Microservice.class);
-        
-        when(mockService1.retrieveAsync(any())).thenReturn(CompletableFuture.completedFuture("Hello"));
-        when(mockService2.retrieveAsync(any())).thenReturn(CompletableFuture.completedFuture("World"));
 
+    /**
+     * Test for Task A: Fail-Fast (Atomic Policy)
+     * Verifies that if one service fails, the entire operation fails and
+     * the exception propagates to the caller[cite: 24, 71].
+     */
+    @Test
+    public void testFailFast_WhenOneServiceFails_ShouldThrowException() {
+        // Arrange
         AsyncProcessor processor = new AsyncProcessor();
-        CompletableFuture<String> resultFuture = processor.processAsync(List.of(mockService1, mockService2), null);
+        MicroService s1 = new MicroService("Service1");
+        MicroService s2 = new MicroService("Service2");
         
-        String result = resultFuture.get();
-        assertEquals("Hello World", result);
-        
-//        CompletableFuture<List<String>> resultFuture =
-//        	    processor.processAsyncWithCompletionOrder(
-//        	        List.of(mockService1, mockService2));
+        // Simulate a failure in one service [cite: 71]
+        s2.setShouldFail(true); 
 
-//        	List<String> order = resultFuture.get();
-//        	System.out.println(order);
+        List<MicroService> services = List.of(s1, s2);
+        List<String> messages = List.of("task1", "task2");
 
-        
+        // Act
+        CompletableFuture<String> resultFuture = processor.processAsyncFailFast(services, messages);
+
+        // Assert: Verify exception propagates (assertThrows) [cite: 71]
+        assertThrows(ExecutionException.class, () -> {
+            // Requirement: Use a timeout to verify liveness 
+            resultFuture.get(2, TimeUnit.SECONDS);
+        });
     }
-	
-	
-	@ParameterizedTest
-    @CsvSource({
-        "hi, Hello:HI World:HI",
-        "cloud, Hello:CLOUD World:CLOUD",
-        "async, Hello:ASYNC World:ASYNC"
-    })
-    public void testProcessAsync_withDifferentMessages(
-            String message,
-            String expectedResult)
-            throws ExecutionException, InterruptedException, TimeoutException {
 
-        Microservice service1 = new Microservice("Hello");
-        Microservice service2 = new Microservice("World");
-
+    /**
+     * Test for Success Case of Fail-Fast
+     * Verifies that when all services succeed, results are aggregated[cite: 25].
+     */
+    @Test
+    public void testFailFast_Success_ShouldReturnCombinedResult() throws Exception {
+        // Arrange
         AsyncProcessor processor = new AsyncProcessor();
+        MicroService s1 = new MicroService("S1");
+        MicroService s2 = new MicroService("S2");
 
-        CompletableFuture<String> resultFuture =
-            processor.processAsync(List.of(service1, service2), message);
+        List<MicroService> services = List.of(s1, s2);
+        List<String> messages = List.of("hello", "world");
 
-        String result = resultFuture.get(1, TimeUnit.SECONDS);
+        // Act
+        CompletableFuture<String> resultFuture = processor.processAsyncFailFast(services, messages);
+        String result = resultFuture.get(2, TimeUnit.SECONDS);
 
-        assertEquals(expectedResult, result);
-        
-    }
-	
-	
-	@RepeatedTest(20)
-    void showNondeterminism_completionOrderVaries() throws Exception {
-
-        Microservice s1 = new Microservice("A");
-        Microservice s2 = new Microservice("B");
-        Microservice s3 = new Microservice("C");
-
-        AsyncProcessor processor = new AsyncProcessor();
-
-        List<String> order = processor
-            .processAsyncCompletionOrder(List.of(s1, s2, s3), "msg")
-            .get(1, TimeUnit.SECONDS);
-
-        // Not asserting a fixed order (because it is intentionally nondeterministic)
-        System.out.println(order);
-
-        // A minimal sanity check: all three must be present
-        assertEquals(3, order.size());
-   
-        assertTrue(order.stream().anyMatch(x -> x.startsWith("A:")));
-        assertTrue(order.stream().anyMatch(x -> x.startsWith("B:")));
-        assertTrue(order.stream().anyMatch(x -> x.startsWith("C:")));
+        // Assert
+        assertTrue(result.contains("S1:HELLO"));
+        assertTrue(result.contains("S2:WORLD"));
     }
 }
-	
